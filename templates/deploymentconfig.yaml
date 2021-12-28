@@ -1,0 +1,140 @@
+{{- if .Values.rhsso }}
+---
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  labels:
+    application: {{ .Values.rhsso.name | quote }}
+  name: {{ .Values.rhsso.name | quote }}
+spec:
+  replicas: {{ .Values.rhsso.replicas | default 1 }}
+  selector:
+    deploymentConfig: {{ .Values.rhsso.name | quote }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        application: {{ .Values.rhsso.name | quote }}
+        deploymentConfig: {{ .Values.rhsso.name | quote }}
+      name: {{ .Values.rhsso.name | quote }}
+    spec:
+      containers:
+      - env:
+        {{- if .Values.rhsso.hostname }}
+        - name: SSO_HOSTNAME
+          value: {{ .Values.rhsso.hostname | quote }}
+        {{- end }}
+        {{- if .Values.rhsso.env.database }}
+        - name: DATASOURCES
+          value: "SSO_DB"
+        - name: SSO_DB_JNDI
+          value: {{ .Values.rhsso.env.database.jndi | quote }} 
+        - name: SSO_DB_USERNAME
+          value: {{ .Values.rhsso.env.database.username | quote }}
+        - name: SSO_DB_PASSWORD
+          value: {{ .Values.rhsso.env.database.password | default (randAlpha 16 | b64enc) | quote }}
+        - name: SSO_DB_DRIVER
+          value: {{ .Values.rhsso.env.database.driver | quote }}
+        - name: SSO_DB_DATABASE
+          value: {{ .Values.rhsso.env.database.schema | quote }}
+        - name: SSO_DB_URL
+          value: {{ .Values.rhsso.env.database.jdbc_url | quote }}
+        - name: SSO_DB_NONXA
+          value: {{ .Values.rhsso.env.database.nonxa | quote }}
+        - name: SSO_DB_CONNECTION_CHECKER
+          value: {{ default "org.jboss.jca.adapters.jdbc.extensions.mssql.MSSQLValidConnectionChecker" }}
+        {{- end }}
+        - name: JGROUPS_PING_PROTOCOL
+          value: dns.DNS_PING
+        - name: OPENSHIFT_DNS_PING_SERVICE_NAME
+          value: {{ print .Values.rhsso.name "-ping" | quote }}
+        - name: OPENSHIFT_DNS_PING_SERVICE_PORT
+          value: "8888"
+        - name: X509_CA_BUNDLE
+          value: >-
+            /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+            /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        - name: JGROUPS_CLUSTER_PASSWORD
+          value: {{ randAlpha 32 | quote }}
+        - name: SSO_ADMIN_USERNAME
+          value: {{ .Values.rhsso.admin.username | quote }}
+        - name: SSO_ADMIN_PASSWORD
+          value: {{ .Values.rhsso.admin.password | default (randAlpha 16) | quote }}
+        {{- if .Values.rhsso.realm }}
+        - name: SSO_REALM
+          value: {{ .Values.rhsso.realm | quote }}
+        {{- end }}
+        - name: SSO_SERVICE_USERNAME
+          value: {{ .Values.rhsso.service.username | quote }}
+        - name: SSO_SERVICE_PASSWORD
+          value: {{ .Values.rhsso.service.password | default (randAlpha 16) | quote }}
+        image: '{{ .Values.rhsso.image | quote }}'
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - /opt/eap/bin/livenessProbe.sh
+          initialDelaySeconds: 60
+        name: {{ .Values.rhsso.name | quote }}
+        ports:
+        - containerPort: 8778
+          name: jolokia
+          protocol: TCP
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        - containerPort: 8888
+          name: ping
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - /opt/eap/bin/readinessProbe.sh
+        resources:
+          requests:
+            memory: {{ .Values.rhsso.resources.requests.memory | quote }}
+            cpu: {{ .Values.rhsso.resources.requests.cpu | quote }}
+          limits:
+            memory: {{ .Values.rhsso.resources.limits.memory | quote }}
+            cpu: {{ .Values.rhsso.resources.limits.cpu | quote }}
+        volumeMounts:
+        - mountPath: /etc/x509/https
+          name: sso-x509-https-volume
+          readOnly: true
+        - mountPath: /etc/x509/jgroups
+          name: sso-x509-jgroups-volume
+          readOnly: true
+        - mountPath: /var/run/configmaps/service-ca
+          name: service-ca
+          readOnly: true
+      terminationGracePeriodSeconds: 75
+      volumes:
+      - name: sso-x509-https-volume
+        secret:
+          secretName: sso-x509-https-secret
+      - name: sso-x509-jgroups-volume
+        secret:
+          secretName: sso-x509-jgroups-secret
+      - configMap:
+          name: {{ print .Values.rhsso.name "-service-ca" }}
+        name: service-ca          
+  triggers:
+  - imageChangeParams:
+      automatic: true
+      containerNames:
+      - {{ .Values.rhsso.name | quote }}
+      from:
+        kind: ImageStreamTag
+        name: {{ .Values.rhsso.imagestream.name }}:{{ .Values.rhsso.imagestream.tag | default "latest" }}
+        namespace: {{ .Values.rhsso.imagestream.namespace }}
+    type: ImageChange
+  - type: ConfigChange
+{{- end }}

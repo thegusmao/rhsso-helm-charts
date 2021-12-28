@@ -1,0 +1,20 @@
+{{- if .Values.rhsso }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    description: The JGroups ping port for clustering.
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: 'true'
+    service.alpha.openshift.io/serving-cert-secret-name: sso-x509-jgroups-secret
+  labels:
+    application: {{ .Values.rhsso.name }}
+  name: {{ print .Values.rhsso.name "-ping" | quote }}
+spec:
+  clusterIP: None
+  ports:
+  - name: ping
+    port: 8888
+  selector:
+    deploymentConfig: {{ .Values.rhsso.name | quote }}
+{{- end }}

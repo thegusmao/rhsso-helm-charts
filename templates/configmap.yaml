@@ -1,0 +1,12 @@
+{{- if .Values.rhsso }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    description: ConfigMap providing service ca bundle.
+    service.beta.openshift.io/inject-cabundle: 'true'
+  labels:
+    application: {{ .Values.rhsso.name }}
+  name: {{ print .Values.rhsso.name "-service-ca"}}
+{{- end }}
